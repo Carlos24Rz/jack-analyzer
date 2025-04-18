@@ -3,25 +3,7 @@
 #include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
-
-typedef enum TOKEN_TYPE
-{
-  KEYWORD_TOKEN_TYPE,
-  SYMBOL_TOKEN_TYPE,
-  INT_CONST_TOKEN_TYPE,
-  STRING_CONST_TOKEN_TYPE,
-  IDENTIFIER_TOKEN_TYPE
-} TOKEN_TYPE;
-
-#define TOKEN_MAX_LEN 256
-
-typedef struct Token
-{
-  TOKEN_TYPE type;
-  char token[TOKEN_MAX_LEN + 1];
-  int line;
-  int column;
-} Token;
+#include "lexer.h"
 
 typedef struct FileCtx
 {
@@ -30,11 +12,11 @@ typedef struct FileCtx
   int column;
 } FileCtx;
 
-typedef struct LexCtx
+struct LexCtx
 {
   Token current_token;
   FileCtx file_ctx;
-} LexCtx;
+};
 
 // checks if the string is a valid jack keyword
 bool is_keyword(char *str)
@@ -135,8 +117,14 @@ void unread_char(FileCtx *ctx, char c)
   }
 }
 
+// Returns current scanned token
+Token get_token(LexCtx *ctx)
+{
+  return ctx->current_token;
+}
+
 // Scans a file and performs lexical analysis
-bool advance(LexCtx *ctx)
+void advance(LexCtx *ctx)
 {
   FileCtx *file_ctx = &ctx->file_ctx;
   char c;
@@ -173,7 +161,8 @@ bool advance(LexCtx *ctx)
         if (c == EOF)
         {
           fprintf(stderr, "Incomplete comment at line %d, column %d\n", file_ctx->line, file_ctx->column);
-          exit(1);
+          init_token(&ctx->current_token, INVALID_TOKEN_TYPE, "", file_ctx->line, file_ctx->column);
+          return;
         }
 
         continue;
@@ -190,7 +179,7 @@ bool advance(LexCtx *ctx)
       char c_str[2] = {c, '\0'};
       // print_token(SYMBOL_TOKEN_TYPE, c_str, ctx->line, ctx->column);
       init_token(&ctx->current_token, SYMBOL_TOKEN_TYPE, c_str, file_ctx->line, file_ctx->column);
-      return true;
+      return;
     }
 
     // handle strings
@@ -212,12 +201,13 @@ bool advance(LexCtx *ctx)
       {
         //print_token(STRING_CONST_TOKEN_TYPE, str, ctx->line, ctx->column - strlen(str));
         init_token(&ctx->current_token, STRING_CONST_TOKEN_TYPE, str, file_ctx->line, file_ctx->column - strlen(str));
-        return true;
+        return;
       }
       else
       {
         fprintf(stderr, "Incomplete string at line %d, column %d\n", file_ctx->line, file_ctx->column - (int)strlen(str));
-        exit(1);
+        init_token(&ctx->current_token, INVALID_TOKEN_TYPE, str, file_ctx->line, file_ctx->column - (int)strlen(str));
+        return;
       }
     }
 
@@ -242,12 +232,13 @@ bool advance(LexCtx *ctx)
         // print_token(INT_CONST_TOKEN_TYPE, str, ctx->line, ctx->column - strlen(str));
         init_token(&ctx->current_token, INT_CONST_TOKEN_TYPE, str, file_ctx->line, file_ctx->column - strlen(str));
         unread_char(file_ctx, c);
-        return true;
+        return;
       }
       else
       {
         fprintf(stderr, "Out of range integer %d at line %d, column %d\n", integer, file_ctx->line, file_ctx->column - (int)strlen(str));
-        exit(1);
+        init_token(&ctx->current_token, INVALID_TOKEN_TYPE, str, file_ctx->line, file_ctx->column - (int)strlen(str));
+        return;
       }
     }
 
@@ -269,53 +260,36 @@ bool advance(LexCtx *ctx)
         //print_token(KEYWORD_TOKEN_TYPE, str, ctx->line, ctx->column - (int)strlen(str));
         init_token(&ctx->current_token, KEYWORD_TOKEN_TYPE, str, file_ctx->line, file_ctx->column - strlen(str));
         unread_char(file_ctx, c);
-        return true;
+        return;
       }
       else
       {
         //print_token(IDENTIFIER_TOKEN_TYPE, str, ctx->line, ctx->column - (int)strlen(str));
         init_token(&ctx->current_token, IDENTIFIER_TOKEN_TYPE, str, file_ctx->line, file_ctx->column - strlen(str));
         unread_char(file_ctx, c);
-        return true;
+        return;
       }
     }
     else
     {
       fprintf(stderr, "Unknown token at line %d, column %d\n", file_ctx->line, file_ctx->column);
-      exit(1);
+      init_token(&ctx->current_token, INVALID_TOKEN_TYPE, "", file_ctx->line, file_ctx->column);
+      return;
     }
   }
 
-  return false;
+  init_token(&ctx->current_token, INVALID_TOKEN_TYPE, "", file_ctx->line, file_ctx->column);
 }
 
-int main(int argc, char *argv[])
+LexCtx *init_lexer(const char *filename)
 {
-  FILE *input_file;
-  FileCtx file_ctx;
-  LexCtx ctx;
-  char line[256];
+  LexCtx *ctx;
 
-  if (argc != 2)
-  {
-    fprintf(stderr, "Usage: ./lexer <filename>\n");
-    return 1;
-  }
+  ctx = (LexCtx *)malloc(sizeof(LexCtx));
 
-  input_file = fopen(argv[1], "r");
-
-  ctx.file_ctx.file = input_file;
-  ctx.file_ctx.column = 0;
-  ctx.file_ctx.line = 1;
-
-  while (advance(&ctx))
-  {
-    printf("'%s';", token_type_str(ctx.current_token.type));
-  }
-
-  printf("\n");
-
-  fclose(input_file);
-
-  return 0;
+  ctx->file_ctx.file = fopen(filename, "r");
+  ctx->file_ctx.column = 0;
+  ctx->file_ctx.line = 1;
+  
+  return ctx;
 }
