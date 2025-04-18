@@ -1,6 +1,7 @@
 #ifndef PARSER_H
 #define PARSER_H
 
+#include <stdbool.h>
 #include "lexer.h"
 
 /**
@@ -9,21 +10,21 @@
  */
 
 // Compiles a class. Should be the first call to the parser
-void compileClass(LexCtx *lex_ctx);
+bool compileClass(LexCtx *lex_ctx);
 
-void compileClassVarDec(LexCtx *lex_ctx);
-void compileSubroutine(LexCtx *lex_ctx);
-void compileParameterList(LexCtx *lex_ctx);
-void compileSubroutineBody(LexCtx *lex_ctx);
-void compileVarDec(LexCtx *lex_ctx);
-void compileStatements(LexCtx *lex_ctx);
-void compileLet(LexCtx *lex_ctx);
-void compileIf(LexCtx *lex_ctx);
-void compileWhile(LexCtx *lex_ctx);
-void compileDo(LexCtx *lex_ctx);
-void compileReturn(LexCtx *lex_ctx);
-void compileExpression(LexCtx *lex_ctx);
-void compileTerm(LexCtx *lex_ctx);
+bool compileClassVarDec(LexCtx *lex_ctx);
+bool compileSubroutine(LexCtx *lex_ctx);
+bool compileParameterList(LexCtx *lex_ctx);
+bool compileSubroutineBody(LexCtx *lex_ctx);
+bool compileVarDec(LexCtx *lex_ctx);
+bool compileStatements(LexCtx *lex_ctx);
+bool compileLet(LexCtx *lex_ctx);
+bool compileIf(LexCtx *lex_ctx);
+bool compileWhile(LexCtx *lex_ctx);
+bool compileDo(LexCtx *lex_ctx);
+bool compileReturn(LexCtx *lex_ctx);
+bool compileExpression(LexCtx *lex_ctx);
+bool compileTerm(LexCtx *lex_ctx);
 int compileExpressionList(LexCtx *lex_ctx);
 
 #endif

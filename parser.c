@@ -58,7 +58,31 @@ void print_xml_token(Token *token)
   
   print_identation();
 
-  printf("<%s>%s</%s>\n", token_label, token->token, token_label);
+  printf("<%s>", token_label);
+
+  // Encode  <, >, " and & to valid xml representation
+  if (strcmp(token->token, "<") == 0)
+  {
+    printf("&lt;");
+  }
+  else if (strcmp(token->token, ">") == 0)
+  {
+    printf("&gt;");
+  }
+  else if (strcmp(token->token, "\"") == 0)
+  {
+    printf("&quot;");
+  }
+  else if (strcmp(token->token, "&") == 0)
+  {
+    printf("&amp;");
+  }
+  else
+  {
+    printf("%s", token->token);
+  }
+
+  printf("</%s>\n", token_label);
 }
 
 // Checks if a token matches a given type and (optionally) a string value.
@@ -95,87 +119,102 @@ bool check_op(Token *token)
  return check_token_matches(token, SYMBOL_TOKEN_TYPE, "+") || check_token_matches(token, SYMBOL_TOKEN_TYPE, "-") || check_token_matches(token, SYMBOL_TOKEN_TYPE, "*") || check_token_matches(token, SYMBOL_TOKEN_TYPE, "/") || check_token_matches(token, SYMBOL_TOKEN_TYPE, "&") || check_token_matches(token, SYMBOL_TOKEN_TYPE, "|") || check_token_matches(token, SYMBOL_TOKEN_TYPE, "<") || check_token_matches(token, SYMBOL_TOKEN_TYPE, ">") || check_token_matches(token, SYMBOL_TOKEN_TYPE, "=");
 }
 
+void handle_syntax_error(Token *token, const char *expected_msg)
+{
+  if (token->type != INVALID_TOKEN_TYPE)
+  {
+    fprintf(stderr, "Syntax error at line %d, column %d. Expected %s, got: %s\n", token->line, token->column, token->token, expected_msg);
+  }
+}
+
+#define CHECK_COMPILE_RETURN(ret) do { if (!(ret)) { return false; } } while (0)
+
 // Validates and consumes token.
 // If token is NULL, only type of token is validated
-void compile(LexCtx *lex_ctx, TOKEN_TYPE token_type, const char* token)
+bool compile(LexCtx *lex_ctx, TOKEN_TYPE token_type, const char* token)
 {
   Token current_token = get_token(lex_ctx);
 
   if (!check_token_matches(&current_token, token_type, token))
   {
-    fprintf(stderr, "Syntax error at line %d, column %d. Expected %s, got: %s\n", current_token.line, current_token.column, token, current_token.token);
-    exit(1);
+    handle_syntax_error(&current_token, token);
+    return false;
   }
 
   print_xml_token(&current_token);
 
   // Advance lexer to next token
   advance(lex_ctx);
+
+  return true;
 }
 
 // Validates and consumes token based only on the token type
-void compile_type(LexCtx *lex_ctx, TOKEN_TYPE token_type)
+bool compile_type(LexCtx *lex_ctx, TOKEN_TYPE token_type)
 {
-  compile(lex_ctx, token_type, NULL);
+  return compile(lex_ctx, token_type, NULL);
 }
 
-// 
-void handle_type(LexCtx *lex_ctx)
+// consumes a type 
+bool handle_type(LexCtx *lex_ctx)
 {
   Token current_token = get_token(lex_ctx);
 
   if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "int") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "char") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "boolean"))
   {
-    compile_type(lex_ctx, KEYWORD_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, KEYWORD_TOKEN_TYPE));
   }
   else if (check_token_matches(&current_token, IDENTIFIER_TOKEN_TYPE, NULL))
   {
-    compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
   }
   else
   {
-    fprintf(stderr, "Syntax error at line %d, column %d. Expected \"int\", \"char\", \"boolean\", or an identifier, got: %s", current_token.line, current_token.column, current_token.token);
-    exit(1);
+    handle_syntax_error(&current_token, "\"int\", \"char\", \"boolean\", or an identifier");
+    return false;
   }
+
+  return true;
 }
 
 // Compiles a class
-void compileClass(LexCtx *lex_ctx)
+bool compileClass(LexCtx *lex_ctx)
 {
   Token current_token;
 
   print_xml_open_tag("class", true);
 
-  compile(lex_ctx, KEYWORD_TOKEN_TYPE, "class");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "class"));
 
-  compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{"));
 
   // Lookup
   current_token = get_token(lex_ctx);
 
   while (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "field") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "static"))
   {
-    compileClassVarDec(lex_ctx);
+    CHECK_COMPILE_RETURN(compileClassVarDec(lex_ctx));
 
     current_token = get_token(lex_ctx);
   }
-
   
   while (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "constructor") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "function") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "method"))
   {
-    compileSubroutine(lex_ctx);
+    CHECK_COMPILE_RETURN(compileSubroutine(lex_ctx));
 
     current_token = get_token(lex_ctx);
   }
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}"));
 
   print_xml_close_tag("class", true);
+
+  return true;
 }
 
-void compileClassVarDec(LexCtx *lex_ctx)
+bool compileClassVarDec(LexCtx *lex_ctx)
 {
   print_xml_open_tag("classVarDec", true);
 
@@ -184,35 +223,37 @@ void compileClassVarDec(LexCtx *lex_ctx)
 
   if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "field") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "static"))
   {
-    compile_type(lex_ctx, KEYWORD_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, KEYWORD_TOKEN_TYPE));
   }
   else
   {
-    fprintf(stderr, "Syntax error at line %d, column %d. Expected \"class\" or \"string\", got: %s", current_token.line, current_token.column, current_token.token);
-    exit(1);
+    handle_syntax_error(&current_token, "\"class\" or \"string\"");
+    return false;
   }
 
-  handle_type(lex_ctx);
+  CHECK_COMPILE_RETURN(handle_type(lex_ctx));
 
-  compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
 
   current_token = get_token(lex_ctx);
 
   while (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, ","))
   {
-    compile(lex_ctx, SYMBOL_TOKEN_TYPE, ",");
+    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ","));
 
-    compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
 
     current_token = get_token(lex_ctx);
   }
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";"));
 
   print_xml_close_tag("classVarDec", true);
+
+  return true;
 }
 
-void compileSubroutine(LexCtx *lex_ctx)
+bool compileSubroutine(LexCtx *lex_ctx)
 {
   Token current_token = get_token(lex_ctx);
 
@@ -220,41 +261,43 @@ void compileSubroutine(LexCtx *lex_ctx)
 
   if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "constructor") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "function") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "method"))
   {
-    compile_type(lex_ctx, KEYWORD_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, KEYWORD_TOKEN_TYPE));
   }
   else
   {
-    fprintf(stderr, "Syntax error at line %d, column %d. Expected \"constructor\", \"function\" or \"method\", got: %s", current_token.line, current_token.column, current_token.token);
-    exit(1);
+    handle_syntax_error(&current_token, "\"constructor\", \"function\" or \"method\"");
+    return false;
   }
 
   current_token = get_token(lex_ctx);
 
   if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "void"))
   {
-    compile_type(lex_ctx, KEYWORD_TOKEN_TYPE);
+   CHECK_COMPILE_RETURN(compile_type(lex_ctx, KEYWORD_TOKEN_TYPE));
   }
   else
   {
-    compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
   }
 
-  compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, "(");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "("));
 
   current_token = get_token(lex_ctx);
 
-  compileParameterList(lex_ctx);
+  CHECK_COMPILE_RETURN(compileParameterList(lex_ctx));
 
-  compile(lex_ctx , SYMBOL_TOKEN_TYPE, ")");
+  CHECK_COMPILE_RETURN(compile(lex_ctx , SYMBOL_TOKEN_TYPE, ")"));
 
-  compileSubroutineBody(lex_ctx);
+  CHECK_COMPILE_RETURN(compileSubroutineBody(lex_ctx));
 
   print_xml_close_tag("subroutineDec", true);
+
+  return true;
 }
 
-void compileParameterList(LexCtx *lex_ctx)
+bool compileParameterList(LexCtx *lex_ctx)
 {
   Token current_token = get_token(lex_ctx);
 
@@ -263,81 +306,87 @@ void compileParameterList(LexCtx *lex_ctx)
   if (!check_type(&current_token))
   {
     print_xml_close_tag("parameterList", true);
-    return;
+    return true;
   }
 
-  handle_type(lex_ctx);
+  CHECK_COMPILE_RETURN(handle_type(lex_ctx));
 
-  compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
 
   current_token = get_token(lex_ctx);
 
   while (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, ","))
   {
-    compile_type(lex_ctx, SYMBOL_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
 
-    handle_type(lex_ctx);
+    CHECK_COMPILE_RETURN(handle_type(lex_ctx));
 
-    compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
 
     current_token = get_token(lex_ctx);
   }
 
   print_xml_close_tag("parameterList", true);
+
+  return true;
 }
 
-void compileSubroutineBody(LexCtx *lex_ctx)
+bool compileSubroutineBody(LexCtx *lex_ctx)
 {
   Token current_token;
 
   print_xml_open_tag("subroutineBody", true);
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{"));
 
   current_token = get_token(lex_ctx);
 
   while (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "var"))
   {
-    compileVarDec(lex_ctx);
+    CHECK_COMPILE_RETURN(compileVarDec(lex_ctx));
 
     current_token = get_token(lex_ctx);
   }
 
-  compileStatements(lex_ctx);
+  CHECK_COMPILE_RETURN(compileStatements(lex_ctx));
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}"));
 
   print_xml_close_tag("subroutineBody", true);
+
+  return true;
 }
 
-void compileVarDec(LexCtx *lex_ctx)
+bool compileVarDec(LexCtx *lex_ctx)
 {
   Token current_token;
 
   print_xml_open_tag("varDec", true);
 
-  compile(lex_ctx, KEYWORD_TOKEN_TYPE, "var");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "var"));
 
-  handle_type(lex_ctx);
+  CHECK_COMPILE_RETURN(handle_type(lex_ctx));
 
-  compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
 
   current_token = get_token(lex_ctx);
 
   while (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, ","))
   {
-    compile_type(lex_ctx, SYMBOL_TOKEN_TYPE);
-    compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
 
     current_token = get_token(lex_ctx);
   }
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";"));
 
   print_xml_close_tag("varDec", true);
+
+  return true;
 }
 
-void compileStatements(LexCtx *lex_ctx)
+bool compileStatements(LexCtx *lex_ctx)
 {
   Token current_token;
 
@@ -349,23 +398,23 @@ void compileStatements(LexCtx *lex_ctx)
 
     if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "let"))
     {
-      compileLet(lex_ctx);
+      CHECK_COMPILE_RETURN(compileLet(lex_ctx));
     }
     else if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "if"))
     {
-      compileIf(lex_ctx);
+      CHECK_COMPILE_RETURN(compileIf(lex_ctx));
     }
     else if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "while"))
     {
-      compileWhile(lex_ctx);
+      CHECK_COMPILE_RETURN(compileWhile(lex_ctx));
     }
     else if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "do"))
     {
-      compileDo(lex_ctx);
+      CHECK_COMPILE_RETURN(compileDo(lex_ctx));
     }
     else if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "return"))
     {
-      compileReturn(lex_ctx);
+      CHECK_COMPILE_RETURN(compileReturn(lex_ctx));
     }
     else
     {
@@ -374,164 +423,186 @@ void compileStatements(LexCtx *lex_ctx)
   }
 
   print_xml_close_tag("statements", true);
+
+  return true;
 }
 
-void compileLet(LexCtx *lex_ctx)
+bool compileLet(LexCtx *lex_ctx)
 {
   Token current_token;
 
   print_xml_open_tag("letStatement", true);
 
-  compile(lex_ctx, KEYWORD_TOKEN_TYPE, "let");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "let"));
 
-  compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
 
   current_token = get_token(lex_ctx);
 
   if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "["))
   {
-    compile_type(lex_ctx, SYMBOL_TOKEN_TYPE);
-    compileExpression(lex_ctx);
-    compile(lex_ctx, SYMBOL_TOKEN_TYPE, "]");
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
+    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "]"));
   }
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, "=");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "="));
 
-  compileExpression(lex_ctx);
+  CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";"));
 
   print_xml_close_tag("letStatement", true);
+
+  return true;
 }
 
-void compileIf(LexCtx *lex_ctx)
+bool compileIf(LexCtx *lex_ctx)
 {
   Token current_token;
 
   print_xml_open_tag("ifStatement", true);
 
-  compile(lex_ctx, KEYWORD_TOKEN_TYPE, "if");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "if"));
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, "(");
-  compileExpression(lex_ctx);
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "("));
+  CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{");
-  compileStatements(lex_ctx);
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{"));
+  CHECK_COMPILE_RETURN(compileStatements(lex_ctx));
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}"));
 
   current_token = get_token(lex_ctx);
 
   if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "else"))
   {
-    compile_type(lex_ctx, KEYWORD_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, KEYWORD_TOKEN_TYPE));
 
-    compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{");
-    compileStatements(lex_ctx);
-    compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}");
+    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{"));
+    CHECK_COMPILE_RETURN(compileStatements(lex_ctx));
+    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}"));
   }
 
   print_xml_close_tag("ifStatement", true);
+
+  return true;
 }
 
-void compileWhile(LexCtx *lex_ctx)
+bool compileWhile(LexCtx *lex_ctx)
 {
   Token current_token;
 
   print_xml_open_tag("whileStatement", true);
 
-  compile(lex_ctx, KEYWORD_TOKEN_TYPE, "while");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "while"));
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, "(");
-  compileExpression(lex_ctx);
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "("));
+  CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{");
-  compileStatements(lex_ctx);
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{"));
+  CHECK_COMPILE_RETURN(compileStatements(lex_ctx));
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}"));
 
   print_xml_close_tag("whileStatement", true);
+
+  return true;
 }
 
-void compileDo(LexCtx *lex_ctx)
+bool compileDo(LexCtx *lex_ctx)
 {
   Token current_token;
 
   print_xml_open_tag("doStatement", true);
 
-  compile(lex_ctx, KEYWORD_TOKEN_TYPE, "do");
-  compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "do"));
+  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
 
   current_token = get_token(lex_ctx);
 
   // This is duplicated in compileTerm, it would require to rewrite the lexer to handle token lookahead
   if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "("))
   {
-    compile_type(lex_ctx, SYMBOL_TOKEN_TYPE);
-    compileExpressionList(lex_ctx);
-    compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")");
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+    // Expression list returns -1 when it fails instead of false
+    if (compileExpressionList(lex_ctx) == -1)
+    {
+      return false;
+    }
+    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
   }
   else if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "."))
   {
-    compile_type(lex_ctx, SYMBOL_TOKEN_TYPE);
-    compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
-    compile(lex_ctx, SYMBOL_TOKEN_TYPE, "(");
-    compileExpressionList(lex_ctx);
-    compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")");
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "("));
+    // Expression list returns -1 when it fails instead of false
+    if (compileExpressionList(lex_ctx) == -1)
+    {
+      return false;
+    }
+    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
   }
   else
   {
-    fprintf(stderr, "Syntax error at line %d, column %d. Expected \"(\", or \".\", got: %s", current_token.line, current_token.column, current_token.token);
-    exit(1);
+    handle_syntax_error(&current_token, "\"(\", or \".\"");
+    return false;
   }
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";"));
 
   print_xml_close_tag("doStatement", true);
+
+  return true;
 }
 
-void compileReturn(LexCtx *lex_ctx)
+bool compileReturn(LexCtx *lex_ctx)
 {
   Token current_token;
 
   print_xml_open_tag("returnStatement", true);
 
-  compile(lex_ctx, KEYWORD_TOKEN_TYPE, "return");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "return"));
 
   current_token = get_token(lex_ctx);
 
   if (check_expression(&current_token))
   {
-    compileExpression(lex_ctx);
+    CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
   }
 
-  compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";");
+  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";"));
 
   print_xml_close_tag("returnStatement", true);
+
+  return true;
 }
 
-void compileExpression(LexCtx* lex_ctx)
+bool compileExpression(LexCtx* lex_ctx)
 {
   Token current_token;
 
   print_xml_open_tag("expression", true);
 
-  compileTerm(lex_ctx);
+  CHECK_COMPILE_RETURN(compileTerm(lex_ctx));
 
   current_token = get_token(lex_ctx);
 
   while (check_op(&current_token))
   {
-    compile_type(lex_ctx, SYMBOL_TOKEN_TYPE);
-    compileTerm(lex_ctx);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compileTerm(lex_ctx));
 
     current_token = get_token(lex_ctx);
   }
 
   print_xml_close_tag("expression", true);
+
+  return true;
 }
 
-void compileTerm(LexCtx *lex_ctx)
+bool compileTerm(LexCtx *lex_ctx)
 {
   Token current_token = get_token(lex_ctx);
 
@@ -539,62 +610,73 @@ void compileTerm(LexCtx *lex_ctx)
 
   if (check_token_matches(&current_token, INT_CONST_TOKEN_TYPE, NULL))
   {
-    compile_type(lex_ctx, INT_CONST_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, INT_CONST_TOKEN_TYPE));
   }
   else if (check_token_matches(&current_token, STRING_CONST_TOKEN_TYPE, NULL))
   {
-    compile_type(lex_ctx, STRING_CONST_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, STRING_CONST_TOKEN_TYPE));
   }
   else if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "true") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "false") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "null") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "this"))
   {
-    compile_type(lex_ctx, KEYWORD_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, KEYWORD_TOKEN_TYPE));
   }
   else if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "("))
   {
-    compile_type(lex_ctx, SYMBOL_TOKEN_TYPE);
-    compileExpression(lex_ctx);
-    compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")");
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
+    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
   }
   else if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "-") || check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "~"))
   {
-    compile_type(lex_ctx, SYMBOL_TOKEN_TYPE);
-    compileTerm(lex_ctx);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compileTerm(lex_ctx));
   }
   else
   {
-    compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
+    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
 
     current_token = get_token(lex_ctx);
    
     if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "["))
     {
-      compile_type(lex_ctx, SYMBOL_TOKEN_TYPE);
-      compileExpression(lex_ctx);
-      compile(lex_ctx, SYMBOL_TOKEN_TYPE, "]");
+      CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+      CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
+      CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "]"));
     }
     // subroutine call - // This is duplicated in compileDo, it would require to rewrite the lexer to handle token lookahead
     else if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "("))
     {
-      compile_type(lex_ctx, SYMBOL_TOKEN_TYPE);
-      compileExpressionList(lex_ctx);
-      compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")");
+      CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+      // Expression list returns -1 when it fails instead of false
+      if (compileExpressionList(lex_ctx) == -1)
+      {
+        return false;
+      }
+      CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
     }
     else if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "."))
     {
-      compile_type(lex_ctx, SYMBOL_TOKEN_TYPE);
-      compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE);
-      compile(lex_ctx, SYMBOL_TOKEN_TYPE, "(");
-      compileExpressionList(lex_ctx);
-      compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")");
+      CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+      CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+      CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "("));
+      // Expression list returns -1 when it fails instead of false
+      if (compileExpressionList(lex_ctx) == -1)
+      {
+        return false;
+      }
+      CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
     }
   }
 
   print_xml_close_tag("term", true);
+
+  return true;
 }
 
 int compileExpressionList(LexCtx *lex_ctx)
 {
   Token current_token = get_token(lex_ctx);
+  int num_expressions = 0;
 
   print_xml_open_tag("expressionList", true);
 
@@ -604,26 +686,29 @@ int compileExpressionList(LexCtx *lex_ctx)
     return 0;
   }
 
-  compileExpression(lex_ctx);
+  if(!compileExpression(lex_ctx))
+   return -1;
 
   current_token = get_token(lex_ctx);
 
   while (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, ","))
   {
-    compile_type(lex_ctx, SYMBOL_TOKEN_TYPE);
-    compileExpression(lex_ctx);
+    if(!(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE) && compileExpression(lex_ctx)))
+      return -1;
+    num_expressions++;
 
     current_token = get_token(lex_ctx);
   }
 
   print_xml_close_tag("expressionList", true);
 
-  return 0;
+  return num_expressions;
 }
 
 int main(int argc, char *argv[])
 {
   LexCtx *ctx;
+  bool status;
 
   if (argc != 2)
   {
@@ -635,7 +720,15 @@ int main(int argc, char *argv[])
 
   advance(ctx);
 
-  compileClass(ctx);
+  status = compileClass(ctx);
+
+  if (!status)
+  {
+    fprintf(stderr, "Failed to parse!\n");
+    return 1;
+  }
+
+  fprintf(stderr, "Done!\n");
 
   return 0;
 
