@@ -32,6 +32,10 @@ void advance(LexCtx *ctx);
 // Returns current scanned token
 Token get_token(LexCtx *ctx);
 
+// Initializes a lexer for a input file
 LexCtx *init_lexer(const char *filename);
+
+// Frees a lexer and clean resources
+void fini_lexer(LexCtx *ctx);
 
 #endif

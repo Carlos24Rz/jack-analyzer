@@ -293,3 +293,10 @@ LexCtx *init_lexer(const char *filename)
   
   return ctx;
 }
+
+void fini_lexer(LexCtx *ctx)
+{
+  fclose(ctx->file_ctx.file);
+
+  free(ctx);
+}
