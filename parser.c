@@ -5,84 +5,87 @@
 #include "lexer.h"
 #include "parser.h"
 
-// Current identation level in parser
-static int identation_level = 0;
+struct Parser
+{
+  LexCtx *lexer;
+  int identation_level;
+};
 
 // Print idententation. Each identation level is made of 2 spaces.
-void print_identation()
+void print_identation(int identation_level, FILE *out)
 {
   int i = 0;
   for (i = 0; i < identation_level; i++)
   {
-    printf("  ");
+    fprintf(out, "  ");
   }
 }
 
 // Prints a open or close xml tag
-void print_xml_tag(const char *tag, bool open, bool newline)
+void print_xml_tag(const char *tag, bool open, bool newline, int identation_level, FILE *out)
 {
-  print_identation();
+  print_identation(identation_level, out);
 
   if (open)
   {
-    printf("<%s>", tag);
+    fprintf(out, "<%s>", tag);
   } else
   {
-    printf("</%s>", tag);
+    fprintf(out,"</%s>", tag);
   }
 
   if (newline)
   {
-    printf("\n");
+    fprintf(out,"\n");
   }
 }
 
 // Prints a open xml tag. To be used only by non terminal symbols
-void print_xml_open_tag(const char *tag, bool newline)
+void print_xml_open_tag(const char *tag, bool newline, int *identation_level, FILE *out)
 {
-  print_xml_tag(tag, true, newline);
-  identation_level++;
+  print_xml_tag(tag, true, newline, *identation_level, out);
+  *identation_level += 1;
 }
 
 // Prints a closed xml tag. To be used only by non terminal symbols
-void print_xml_close_tag(const char *tag, bool newline)
+void print_xml_close_tag(const char *tag, bool newline, int *identation_level, FILE *out)
 {
-  identation_level--;
-  print_xml_tag(tag, false, newline);
+  *identation_level -= 1;
+  print_xml_tag(tag, false, newline, *identation_level, out);
 }
 
 // Prints a terminal token to xml.
-void print_xml_token(Token *token)
+void print_xml_token(Token *token, int *identation_level, FILE *out)
 {
   const char *token_label = token_type_str(token->type);
   
-  print_identation();
+  print_identation(*identation_level, out);
 
-  printf("<%s>", token_label);
+  fprintf(out, "<%s>", token_label);
 
   // Encode  <, >, " and & to valid xml representation
   if (strcmp(token->token, "<") == 0)
   {
-    printf("&lt;");
+    fprintf(out, "&lt;");
   }
   else if (strcmp(token->token, ">") == 0)
   {
-    printf("&gt;");
+    fprintf(out, "&gt;");
   }
   else if (strcmp(token->token, "\"") == 0)
   {
-    printf("&quot;");
+    fprintf(out, "&quot;");
   }
   else if (strcmp(token->token, "&") == 0)
   {
-    printf("&amp;");
+    fprintf(out, "&amp;");
   }
   else
   {
-    printf("%s", token->token);
+    fprintf(out, "%s", token->token);
   }
 
-  printf("</%s>\n", token_label);
+  fprintf(out, "</%s>\n", token_label);
 }
 
 // Checks if a token matches a given type and (optionally) a string value.
@@ -131,9 +134,9 @@ void handle_syntax_error(Token *token, const char *expected_msg)
 
 // Validates and consumes token.
 // If token is NULL, only type of token is validated
-bool compile(LexCtx *lex_ctx, TOKEN_TYPE token_type, const char* token)
+bool compile(Parser *parser, FILE *out, TOKEN_TYPE token_type, const char* token)
 {
-  Token current_token = get_token(lex_ctx);
+  Token current_token = get_token(parser->lexer);
 
   if (!check_token_matches(&current_token, token_type, token))
   {
@@ -141,32 +144,32 @@ bool compile(LexCtx *lex_ctx, TOKEN_TYPE token_type, const char* token)
     return false;
   }
 
-  print_xml_token(&current_token);
+  print_xml_token(&current_token, &parser->identation_level, out);
 
   // Advance lexer to next token
-  advance(lex_ctx);
+  advance(parser->lexer);
 
   return true;
 }
 
 // Validates and consumes token based only on the token type
-bool compile_type(LexCtx *lex_ctx, TOKEN_TYPE token_type)
+bool compile_type(Parser *parser, FILE *out, TOKEN_TYPE token_type)
 {
-  return compile(lex_ctx, token_type, NULL);
+  return compile(parser, out, token_type, NULL);
 }
 
 // consumes a type 
-bool handle_type(LexCtx *lex_ctx)
+bool handle_type(Parser* parser, FILE *out)
 {
-  Token current_token = get_token(lex_ctx);
+  Token current_token = get_token(parser->lexer);
 
   if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "int") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "char") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "boolean"))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, KEYWORD_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, KEYWORD_TOKEN_TYPE));
   }
   else if (check_token_matches(&current_token, IDENTIFIER_TOKEN_TYPE, NULL))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
   }
   else
   {
@@ -178,52 +181,52 @@ bool handle_type(LexCtx *lex_ctx)
 }
 
 // Compiles a class
-bool compileClass(LexCtx *lex_ctx)
+bool compileClass(Parser* parser, FILE *out)
 {
   Token current_token;
 
-  print_xml_open_tag("class", true);
+  print_xml_open_tag("class", true, &parser->identation_level, out);
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "class"));
+  CHECK_COMPILE_RETURN(compile(parser, out, KEYWORD_TOKEN_TYPE, "class"));
 
-  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+  CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "{"));
 
   // Lookup
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
   while (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "field") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "static"))
   {
-    CHECK_COMPILE_RETURN(compileClassVarDec(lex_ctx));
+    CHECK_COMPILE_RETURN(compileClassVarDec(parser, out));
 
-    current_token = get_token(lex_ctx);
+    current_token = get_token(parser->lexer);
   }
   
   while (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "constructor") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "function") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "method"))
   {
-    CHECK_COMPILE_RETURN(compileSubroutine(lex_ctx));
+    CHECK_COMPILE_RETURN(compileSubroutine(parser, out));
 
-    current_token = get_token(lex_ctx);
+    current_token = get_token(parser->lexer);
   }
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "}"));
 
-  print_xml_close_tag("class", true);
+  print_xml_close_tag("class", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileClassVarDec(LexCtx *lex_ctx)
+bool compileClassVarDec(Parser *parser, FILE *out)
 {
-  print_xml_open_tag("classVarDec", true);
+  print_xml_open_tag("classVarDec", true, &parser->identation_level, out);
 
   // Lookup
-  Token current_token = get_token(lex_ctx);
+  Token current_token = get_token(parser->lexer);
 
   if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "field") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "static"))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, KEYWORD_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, KEYWORD_TOKEN_TYPE));
   }
   else
   {
@@ -231,37 +234,37 @@ bool compileClassVarDec(LexCtx *lex_ctx)
     return false;
   }
 
-  CHECK_COMPILE_RETURN(handle_type(lex_ctx));
+  CHECK_COMPILE_RETURN(handle_type(parser, out));
 
-  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+  CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
 
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
   while (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, ","))
   {
-    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ","));
+    CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ","));
 
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
 
-    current_token = get_token(lex_ctx);
+    current_token = get_token(parser->lexer);
   }
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ";"));
 
-  print_xml_close_tag("classVarDec", true);
+  print_xml_close_tag("classVarDec", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileSubroutine(LexCtx *lex_ctx)
+bool compileSubroutine(Parser *parser, FILE *out)
 {
-  Token current_token = get_token(lex_ctx);
+  Token current_token = get_token(parser->lexer);
 
-  print_xml_open_tag("subroutineDec", true);
+  print_xml_open_tag("subroutineDec", true, &parser->identation_level, out);
 
   if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "constructor") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "function") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "method"))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, KEYWORD_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, KEYWORD_TOKEN_TYPE));
   }
   else
   {
@@ -269,152 +272,152 @@ bool compileSubroutine(LexCtx *lex_ctx)
     return false;
   }
 
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
   if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "void"))
   {
-   CHECK_COMPILE_RETURN(compile_type(lex_ctx, KEYWORD_TOKEN_TYPE));
+   CHECK_COMPILE_RETURN(compile_type(parser, out, KEYWORD_TOKEN_TYPE));
   }
   else
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
   }
 
-  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+  CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "("));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "("));
 
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
-  CHECK_COMPILE_RETURN(compileParameterList(lex_ctx));
+  CHECK_COMPILE_RETURN(compileParameterList(parser, out));
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx , SYMBOL_TOKEN_TYPE, ")"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ")"));
 
-  CHECK_COMPILE_RETURN(compileSubroutineBody(lex_ctx));
+  CHECK_COMPILE_RETURN(compileSubroutineBody(parser, out));
 
-  print_xml_close_tag("subroutineDec", true);
+  print_xml_close_tag("subroutineDec", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileParameterList(LexCtx *lex_ctx)
+bool compileParameterList(Parser *parser, FILE *out)
 {
-  Token current_token = get_token(lex_ctx);
+  Token current_token = get_token(parser->lexer);
 
-  print_xml_open_tag("parameterList", true);
+  print_xml_open_tag("parameterList", true, &parser->identation_level, out);
 
   if (!check_type(&current_token))
   {
-    print_xml_close_tag("parameterList", true);
+    print_xml_close_tag("parameterList", true, &parser->identation_level, out);
     return true;
   }
 
-  CHECK_COMPILE_RETURN(handle_type(lex_ctx));
+  CHECK_COMPILE_RETURN(handle_type(parser, out));
 
-  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+  CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
 
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
   while (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, ","))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, SYMBOL_TOKEN_TYPE));
 
-    CHECK_COMPILE_RETURN(handle_type(lex_ctx));
+    CHECK_COMPILE_RETURN(handle_type(parser, out));
 
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
 
-    current_token = get_token(lex_ctx);
+    current_token = get_token(parser->lexer);
   }
 
-  print_xml_close_tag("parameterList", true);
+  print_xml_close_tag("parameterList", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileSubroutineBody(LexCtx *lex_ctx)
+bool compileSubroutineBody(Parser *parser, FILE *out)
 {
   Token current_token;
 
-  print_xml_open_tag("subroutineBody", true);
+  print_xml_open_tag("subroutineBody", true, &parser->identation_level, out);
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "{"));
 
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
   while (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "var"))
   {
-    CHECK_COMPILE_RETURN(compileVarDec(lex_ctx));
+    CHECK_COMPILE_RETURN(compileVarDec(parser, out));
 
-    current_token = get_token(lex_ctx);
+    current_token = get_token(parser->lexer);
   }
 
-  CHECK_COMPILE_RETURN(compileStatements(lex_ctx));
+  CHECK_COMPILE_RETURN(compileStatements(parser, out));
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "}"));
 
-  print_xml_close_tag("subroutineBody", true);
+  print_xml_close_tag("subroutineBody", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileVarDec(LexCtx *lex_ctx)
+bool compileVarDec(Parser *parser, FILE *out)
 {
   Token current_token;
 
-  print_xml_open_tag("varDec", true);
+  print_xml_open_tag("varDec", true, &parser->identation_level, out);
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "var"));
+  CHECK_COMPILE_RETURN(compile(parser, out, KEYWORD_TOKEN_TYPE, "var"));
 
-  CHECK_COMPILE_RETURN(handle_type(lex_ctx));
+  CHECK_COMPILE_RETURN(handle_type(parser, out));
 
-  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+  CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
 
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
   while (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, ","))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
 
-    current_token = get_token(lex_ctx);
+    current_token = get_token(parser->lexer);
   }
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ";"));
 
-  print_xml_close_tag("varDec", true);
+  print_xml_close_tag("varDec", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileStatements(LexCtx *lex_ctx)
+bool compileStatements(Parser *parser, FILE *out)
 {
   Token current_token;
 
-  print_xml_open_tag("statements", true);
+  print_xml_open_tag("statements", true, &parser->identation_level, out);
 
   while (true)
   {
-    current_token = get_token(lex_ctx);
+    current_token = get_token(parser->lexer);
 
     if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "let"))
     {
-      CHECK_COMPILE_RETURN(compileLet(lex_ctx));
+      CHECK_COMPILE_RETURN(compileLet(parser, out));
     }
     else if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "if"))
     {
-      CHECK_COMPILE_RETURN(compileIf(lex_ctx));
+      CHECK_COMPILE_RETURN(compileIf(parser, out));
     }
     else if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "while"))
     {
-      CHECK_COMPILE_RETURN(compileWhile(lex_ctx));
+      CHECK_COMPILE_RETURN(compileWhile(parser, out));
     }
     else if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "do"))
     {
-      CHECK_COMPILE_RETURN(compileDo(lex_ctx));
+      CHECK_COMPILE_RETURN(compileDo(parser, out));
     }
     else if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "return"))
     {
-      CHECK_COMPILE_RETURN(compileReturn(lex_ctx));
+      CHECK_COMPILE_RETURN(compileReturn(parser, out));
     }
     else
     {
@@ -422,127 +425,127 @@ bool compileStatements(LexCtx *lex_ctx)
     }
   }
 
-  print_xml_close_tag("statements", true);
+  print_xml_close_tag("statements", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileLet(LexCtx *lex_ctx)
+bool compileLet(Parser *parser, FILE *out)
 {
   Token current_token;
 
-  print_xml_open_tag("letStatement", true);
+  print_xml_open_tag("letStatement", true, &parser->identation_level, out);
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "let"));
+  CHECK_COMPILE_RETURN(compile(parser, out, KEYWORD_TOKEN_TYPE, "let"));
 
-  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+  CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
 
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
   if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "["))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
-    CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
-    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "]"));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compileExpression(parser, out));
+    CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "]"));
   }
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "="));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "="));
 
-  CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
+  CHECK_COMPILE_RETURN(compileExpression(parser, out));
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ";"));
 
-  print_xml_close_tag("letStatement", true);
+  print_xml_close_tag("letStatement", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileIf(LexCtx *lex_ctx)
+bool compileIf(Parser *parser, FILE *out)
 {
   Token current_token;
 
-  print_xml_open_tag("ifStatement", true);
+  print_xml_open_tag("ifStatement", true, &parser->identation_level, out);
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "if"));
+  CHECK_COMPILE_RETURN(compile(parser, out, KEYWORD_TOKEN_TYPE, "if"));
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "("));
-  CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "("));
+  CHECK_COMPILE_RETURN(compileExpression(parser, out));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ")"));
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{"));
-  CHECK_COMPILE_RETURN(compileStatements(lex_ctx));
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "{"));
+  CHECK_COMPILE_RETURN(compileStatements(parser, out));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "}"));
 
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
   if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "else"))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, KEYWORD_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, KEYWORD_TOKEN_TYPE));
 
-    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{"));
-    CHECK_COMPILE_RETURN(compileStatements(lex_ctx));
-    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}"));
+    CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "{"));
+    CHECK_COMPILE_RETURN(compileStatements(parser, out));
+    CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "}"));
   }
 
-  print_xml_close_tag("ifStatement", true);
+  print_xml_close_tag("ifStatement", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileWhile(LexCtx *lex_ctx)
+bool compileWhile(Parser *parser, FILE *out)
 {
   Token current_token;
 
-  print_xml_open_tag("whileStatement", true);
+  print_xml_open_tag("whileStatement", true, &parser->identation_level, out);
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "while"));
+  CHECK_COMPILE_RETURN(compile(parser, out, KEYWORD_TOKEN_TYPE, "while"));
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "("));
-  CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "("));
+  CHECK_COMPILE_RETURN(compileExpression(parser, out));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ")"));
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "{"));
-  CHECK_COMPILE_RETURN(compileStatements(lex_ctx));
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "}"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "{"));
+  CHECK_COMPILE_RETURN(compileStatements(parser, out));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "}"));
 
-  print_xml_close_tag("whileStatement", true);
+  print_xml_close_tag("whileStatement", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileDo(LexCtx *lex_ctx)
+bool compileDo(Parser *parser, FILE *out)
 {
   Token current_token;
 
-  print_xml_open_tag("doStatement", true);
+  print_xml_open_tag("doStatement", true, &parser->identation_level, out);
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "do"));
-  CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+  CHECK_COMPILE_RETURN(compile(parser, out, KEYWORD_TOKEN_TYPE, "do"));
+  CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
 
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
   // This is duplicated in compileTerm, it would require to rewrite the lexer to handle token lookahead
   if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "("))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, SYMBOL_TOKEN_TYPE));
     // Expression list returns -1 when it fails instead of false
-    if (compileExpressionList(lex_ctx) == -1)
+    if (compileExpressionList(parser, out) == -1)
     {
       return false;
     }
-    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
+    CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ")"));
   }
   else if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "."))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
-    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "("));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "("));
     // Expression list returns -1 when it fails instead of false
-    if (compileExpressionList(lex_ctx) == -1)
+    if (compileExpressionList(parser, out) == -1)
     {
       return false;
     }
-    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
+    CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ")"));
   }
   else
   {
@@ -550,157 +553,157 @@ bool compileDo(LexCtx *lex_ctx)
     return false;
   }
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ";"));
 
-  print_xml_close_tag("doStatement", true);
+  print_xml_close_tag("doStatement", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileReturn(LexCtx *lex_ctx)
+bool compileReturn(Parser *parser, FILE *out)
 {
   Token current_token;
 
-  print_xml_open_tag("returnStatement", true);
+  print_xml_open_tag("returnStatement", true, &parser->identation_level, out);
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, KEYWORD_TOKEN_TYPE, "return"));
+  CHECK_COMPILE_RETURN(compile(parser, out, KEYWORD_TOKEN_TYPE, "return"));
 
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
   if (check_expression(&current_token))
   {
-    CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
+    CHECK_COMPILE_RETURN(compileExpression(parser, out));
   }
 
-  CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ";"));
+  CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ";"));
 
-  print_xml_close_tag("returnStatement", true);
+  print_xml_close_tag("returnStatement", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileExpression(LexCtx* lex_ctx)
+bool compileExpression(Parser* parser, FILE *out)
 {
   Token current_token;
 
-  print_xml_open_tag("expression", true);
+  print_xml_open_tag("expression", true, &parser->identation_level, out);
 
-  CHECK_COMPILE_RETURN(compileTerm(lex_ctx));
+  CHECK_COMPILE_RETURN(compileTerm(parser, out));
 
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
   while (check_op(&current_token))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
-    CHECK_COMPILE_RETURN(compileTerm(lex_ctx));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compileTerm(parser, out));
 
-    current_token = get_token(lex_ctx);
+    current_token = get_token(parser->lexer);
   }
 
-  print_xml_close_tag("expression", true);
+  print_xml_close_tag("expression", true, &parser->identation_level, out);
 
   return true;
 }
 
-bool compileTerm(LexCtx *lex_ctx)
+bool compileTerm(Parser *parser, FILE *out)
 {
-  Token current_token = get_token(lex_ctx);
+  Token current_token = get_token(parser->lexer);
 
-  print_xml_open_tag("term", true);
+  print_xml_open_tag("term", true, &parser->identation_level, out);
 
   if (check_token_matches(&current_token, INT_CONST_TOKEN_TYPE, NULL))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, INT_CONST_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, INT_CONST_TOKEN_TYPE));
   }
   else if (check_token_matches(&current_token, STRING_CONST_TOKEN_TYPE, NULL))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, STRING_CONST_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, STRING_CONST_TOKEN_TYPE));
   }
   else if (check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "true") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "false") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "null") || check_token_matches(&current_token, KEYWORD_TOKEN_TYPE, "this"))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, KEYWORD_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, KEYWORD_TOKEN_TYPE));
   }
   else if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "("))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
-    CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
-    CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compileExpression(parser, out));
+    CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ")"));
   }
   else if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "-") || check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "~"))
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
-    CHECK_COMPILE_RETURN(compileTerm(lex_ctx));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, SYMBOL_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compileTerm(parser, out));
   }
   else
   {
-    CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
+    CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
 
-    current_token = get_token(lex_ctx);
+    current_token = get_token(parser->lexer);
    
     if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "["))
     {
-      CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
-      CHECK_COMPILE_RETURN(compileExpression(lex_ctx));
-      CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "]"));
+      CHECK_COMPILE_RETURN(compile_type(parser, out, SYMBOL_TOKEN_TYPE));
+      CHECK_COMPILE_RETURN(compileExpression(parser, out));
+      CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "]"));
     }
     // subroutine call - // This is duplicated in compileDo, it would require to rewrite the lexer to handle token lookahead
     else if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "("))
     {
-      CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
+      CHECK_COMPILE_RETURN(compile_type(parser, out, SYMBOL_TOKEN_TYPE));
       // Expression list returns -1 when it fails instead of false
-      if (compileExpressionList(lex_ctx) == -1)
+      if (compileExpressionList(parser, out) == -1)
       {
         return false;
       }
-      CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
+      CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ")"));
     }
     else if (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, "."))
     {
-      CHECK_COMPILE_RETURN(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE));
-      CHECK_COMPILE_RETURN(compile_type(lex_ctx, IDENTIFIER_TOKEN_TYPE));
-      CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, "("));
+      CHECK_COMPILE_RETURN(compile_type(parser, out, SYMBOL_TOKEN_TYPE));
+      CHECK_COMPILE_RETURN(compile_type(parser, out, IDENTIFIER_TOKEN_TYPE));
+      CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, "("));
       // Expression list returns -1 when it fails instead of false
-      if (compileExpressionList(lex_ctx) == -1)
+      if (compileExpressionList(parser, out) == -1)
       {
         return false;
       }
-      CHECK_COMPILE_RETURN(compile(lex_ctx, SYMBOL_TOKEN_TYPE, ")"));
+      CHECK_COMPILE_RETURN(compile(parser, out, SYMBOL_TOKEN_TYPE, ")"));
     }
   }
 
-  print_xml_close_tag("term", true);
+  print_xml_close_tag("term", true, &parser->identation_level, out);
 
   return true;
 }
 
-int compileExpressionList(LexCtx *lex_ctx)
+int compileExpressionList(Parser *parser, FILE *out)
 {
-  Token current_token = get_token(lex_ctx);
+  Token current_token = get_token(parser->lexer);
   int num_expressions = 0;
 
-  print_xml_open_tag("expressionList", true);
+  print_xml_open_tag("expressionList", true, &parser->identation_level, out);
 
   if (!check_expression(&current_token))
   {
-    print_xml_close_tag("expressionList", true);
+    print_xml_close_tag("expressionList", true, &parser->identation_level, out);
     return 0;
   }
 
-  if(!compileExpression(lex_ctx))
+  if(!compileExpression(parser, out))
    return -1;
 
-  current_token = get_token(lex_ctx);
+  current_token = get_token(parser->lexer);
 
   while (check_token_matches(&current_token, SYMBOL_TOKEN_TYPE, ","))
   {
-    if(!(compile_type(lex_ctx, SYMBOL_TOKEN_TYPE) && compileExpression(lex_ctx)))
+    if(!(compile_type(parser, out, SYMBOL_TOKEN_TYPE) && compileExpression(parser, out)))
       return -1;
     num_expressions++;
 
-    current_token = get_token(lex_ctx);
+    current_token = get_token(parser->lexer);
   }
 
-  print_xml_close_tag("expressionList", true);
+  print_xml_close_tag("expressionList", true, &parser->identation_level, out);
 
   return num_expressions;
 }
@@ -708,11 +711,13 @@ int compileExpressionList(LexCtx *lex_ctx)
 int main(int argc, char *argv[])
 {
   LexCtx *ctx;
+  Parser parser;
+  FILE *out_file;
   bool status;
 
   if (argc != 2)
   {
-    fprintf(stderr, "Usage: ./lexer <filename>\n");
+    fprintf(stderr, "Usage: ./parser <filename>\n");
     return 1;
   }
 
@@ -720,7 +725,18 @@ int main(int argc, char *argv[])
 
   advance(ctx);
 
-  status = compileClass(ctx);
+  parser.identation_level = 0;
+  parser.lexer = ctx;
+
+  out_file = fopen("out.xml", "w");
+
+  status = compileClass(&parser, out_file);
+
+  fini_lexer(parser.lexer);
+
+  parser.lexer = NULL;
+
+  fclose(out_file);
 
   if (!status)
   {

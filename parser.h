@@ -2,7 +2,10 @@
 #define PARSER_H
 
 #include <stdbool.h>
+#include <stdio.h>
 #include "lexer.h"
+
+typedef struct Parser Parser;
 
 /**
  * The following are the available grammar rules for the jack programming language.
@@ -10,21 +13,21 @@
  */
 
 // Compiles a class. Should be the first call to the parser
-bool compileClass(LexCtx *lex_ctx);
+bool compileClass(Parser *parser, FILE *out_file);
 
-bool compileClassVarDec(LexCtx *lex_ctx);
-bool compileSubroutine(LexCtx *lex_ctx);
-bool compileParameterList(LexCtx *lex_ctx);
-bool compileSubroutineBody(LexCtx *lex_ctx);
-bool compileVarDec(LexCtx *lex_ctx);
-bool compileStatements(LexCtx *lex_ctx);
-bool compileLet(LexCtx *lex_ctx);
-bool compileIf(LexCtx *lex_ctx);
-bool compileWhile(LexCtx *lex_ctx);
-bool compileDo(LexCtx *lex_ctx);
-bool compileReturn(LexCtx *lex_ctx);
-bool compileExpression(LexCtx *lex_ctx);
-bool compileTerm(LexCtx *lex_ctx);
-int compileExpressionList(LexCtx *lex_ctx);
+bool compileClassVarDec(Parser *parser, FILE *out_file);
+bool compileSubroutine(Parser *parser, FILE *out_file);
+bool compileParameterList(Parser *parser, FILE *out_file);
+bool compileSubroutineBody(Parser *parser, FILE *out_file);
+bool compileVarDec(Parser *parser, FILE *out_file);
+bool compileStatements(Parser *parser, FILE *out_file);
+bool compileLet(Parser *parser, FILE *out_file);
+bool compileIf(Parser *parser, FILE *out_file);
+bool compileWhile(Parser *parser, FILE *out_file);
+bool compileDo(Parser *parser, FILE *out_file);
+bool compileReturn(Parser *parser, FILE *out_file);
+bool compileExpression(Parser *parser, FILE *out_file);
+bool compileTerm(Parser *parser, FILE *out_file);
+int compileExpressionList(Parser *parse, FILE *out_file);
 
 #endif
