@@ -126,7 +126,7 @@ void handle_syntax_error(Token *token, const char *expected_msg)
 {
   if (token->type != INVALID_TOKEN_TYPE)
   {
-    fprintf(stderr, "Syntax error at line %d, column %d. Expected %s, got: %s\n", token->line, token->column, token->token, expected_msg);
+    fprintf(stderr, "Syntax error at line %d, column %d. Expected %s, got: %s\n", token->line, token->column, expected_msg, token->token);
   }
 }
 
@@ -708,44 +708,29 @@ int compileExpressionList(Parser *parser, FILE *out)
   return num_expressions;
 }
 
-int main(int argc, char *argv[])
+Parser *init_parser(const char *filename)
 {
-  LexCtx *ctx;
-  Parser parser;
-  FILE *out_file;
-  bool status;
+  Parser *parser = (Parser *)malloc(sizeof(Parser));
 
-  if (argc != 2)
+  if (parser == NULL)
+    return NULL;
+
+  parser->lexer = init_lexer(filename);
+
+  if (parser->lexer == NULL)
   {
-    fprintf(stderr, "Usage: ./parser <filename>\n");
-    return 1;
+    free(parser);
+    return NULL;
   }
 
-  ctx = init_lexer(argv[1]);
+  parser->identation_level = 0;
 
-  advance(ctx);
+  return parser;
+}
 
-  parser.identation_level = 0;
-  parser.lexer = ctx;
+void fini_parser(Parser *parser)
+{
+  fini_lexer(parser->lexer);
 
-  out_file = fopen("out.xml", "w");
-
-  status = compileClass(&parser, out_file);
-
-  fini_lexer(parser.lexer);
-
-  parser.lexer = NULL;
-
-  fclose(out_file);
-
-  if (!status)
-  {
-    fprintf(stderr, "Failed to parse!\n");
-    return 1;
-  }
-
-  fprintf(stderr, "Done!\n");
-
-  return 0;
-
+  free(parser);
 }

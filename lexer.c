@@ -287,7 +287,17 @@ LexCtx *init_lexer(const char *filename)
 
   ctx = (LexCtx *)malloc(sizeof(LexCtx));
 
+  if (ctx == NULL)
+    return NULL;
+
   ctx->file_ctx.file = fopen(filename, "r");
+
+  if (ctx->file_ctx.file == NULL)
+  {
+    free(ctx);
+    return NULL;
+  }
+
   ctx->file_ctx.column = 0;
   ctx->file_ctx.line = 1;
   

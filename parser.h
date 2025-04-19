@@ -7,6 +7,10 @@
 
 typedef struct Parser Parser;
 
+Parser *init_parser(const char *filename);
+
+void fini_parser(Parser *parser);
+
 /**
  * The following are the available grammar rules for the jack programming language.
  * They consume the required tokens by the indicated rule. Recursive by nature.
