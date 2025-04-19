@@ -725,6 +725,8 @@ Parser *init_parser(const char *filename)
 
   parser->identation_level = 0;
 
+  advance(parser->lexer);
+
   return parser;
 }
 

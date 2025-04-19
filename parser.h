@@ -32,6 +32,6 @@ bool compileDo(Parser *parser, FILE *out_file);
 bool compileReturn(Parser *parser, FILE *out_file);
 bool compileExpression(Parser *parser, FILE *out_file);
 bool compileTerm(Parser *parser, FILE *out_file);
-int compileExpressionList(Parser *parse, FILE *out_file);
+int compileExpressionList(Parser *parser, FILE *out_file);
 
 #endif
